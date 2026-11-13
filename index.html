@@ -107,6 +107,7 @@
                   <th class="py-3 px-4 text-center">คงเหลือ</th>
                   <th class="py-3 px-4 text-center">ปรับสต็อก</th>
                   <th class="py-3 px-4 text-center">สถานะ</th>
+                  <th class="py-3 px-4 text-center">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="admin-product-tbody" class="divide-y divide-slate-100"></tbody>
@@ -509,13 +510,20 @@
     function renderAdminProducts() {
       const tbody = document.getElementById('admin-product-tbody');
       if (allProducts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-slate-400">ยังไม่มีสินค้าในระบบ กด "+ เพิ่มสินค้าใหม่" ได้เลย</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-400">ยังไม่มีสินค้าในระบบ กด "+ เพิ่มสินค้าใหม่" ได้เลย</td></tr>';
         return;
       }
-      tbody.innerHTML = allProducts.map(p => `
+      tbody.innerHTML = allProducts.map(p => {
+        const safeName = p.name.replace(/'/g, "\\'");
+        return `
         <tr class="hover:bg-slate-50">
           <td class="py-3 px-4 font-mono text-xs">${p.sku}</td>
-          <td class="py-3 px-4 font-medium">${p.name}</td>
+          <td class="py-3 px-4">
+            <div class="font-medium">${p.name}</div>
+            <button onclick="deleteProduct('${p.id}', '${safeName}')" class="mt-1 px-2 py-0.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded text-xs font-medium transition">
+              ลบสินค้า
+            </button>
+          </td>
           <td class="py-3 px-4 text-slate-500">${p.category}</td>
           <td class="py-3 px-4 text-right">฿${Number(p.price).toLocaleString()}</td>
           <td class="py-3 px-4 text-center font-bold ${p.stock <= p.min_stock ? 'text-red-600' : 'text-slate-800'}">${p.stock}</td>
@@ -523,7 +531,7 @@
             <div class="inline-flex items-center gap-1">
               <button onclick="adjustStock('${p.id}', -1)" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded text-xs font-medium">-1</button>
               <button onclick="adjustStock('${p.id}', 1)" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-xs font-medium">+1</button>
-              <button onclick="promptCustomStock('${p.id}', '${p.name}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">ระบุจำนวน</button>
+              <button onclick="promptCustomStock('${p.id}', '${safeName}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">ระบุจำนวน</button>
             </div>
           </td>
           <td class="py-3 px-4 text-center">
@@ -531,8 +539,25 @@
               ${p.is_active ? 'เปิดขาย' : 'ซ่อนอยู่'}
             </button>
           </td>
+          <td class="py-3 px-4 text-center">
+            <button onclick="deleteProduct('${p.id}', '${safeName}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded text-xs font-medium transition">
+              ลบ
+            </button>
+          </td>
         </tr>
-      `).join('');
+      `;}).join('');
+    }
+
+    async function deleteProduct(productId, name) {
+      if (!confirm(`ยืนยันการลบสินค้า "${name}" ออกจากระบบหรือไม่?`)) return;
+
+      const { error } = await db.from('products').delete().eq('id', productId);
+      if (error) {
+        alert('ลบสินค้าไม่สำเร็จ: ' + error.message);
+        return;
+      }
+      alert('ลบสินค้าเรียบร้อยแล้ว');
+      await fetchProducts();
     }
 
     async function adjustStock(productId, delta, reason = 'ปรับสต็อกผ่านหน้าเว็บแอดมิน') {
