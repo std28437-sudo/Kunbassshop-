@@ -215,17 +215,26 @@
             <input type="number" min="0" id="new-stock" value="1" required class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
           </div>
         </div>
-        <div>
-          <label class="block font-medium mb-1">ลิงก์รูปภาพสินค้า (Image URL)</label>
-          <input type="url" id="new-image" placeholder="https://..." class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+
+        <!-- อัปโหลดรูปภาพสินค้าจากเครื่องหรือใส่ลิงก์ -->
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+          <label class="block font-medium text-slate-800">รูปภาพสินค้า (เลือกรูปจากเครื่องได้เลย)</label>
+          <input type="file" id="new-image-file" accept="image/*" onchange="previewSelectedImage(event)"
+            class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer" />
+          <img id="new-image-preview" class="hidden w-28 h-28 object-cover rounded-lg border border-slate-300 mt-2" />
+          <div class="pt-1">
+            <label class="block text-xs text-slate-500 mb-1">หรือวางลิงก์รูปภาพ (ถ้ามี):</label>
+            <input type="url" id="new-image" placeholder="https://..." class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs" />
+          </div>
         </div>
+
         <div>
           <label class="block font-medium mb-1">รายละเอียดสินค้า / การรับประกัน</label>
           <textarea id="new-desc" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" onclick="closeAddProductModal()" class="px-4 py-2 border border-slate-300 rounded-lg">ยกเลิก</button>
-          <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium">บันทึกสินค้า</button>
+          <button type="submit" id="btn-save-product" class="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium">บันทึกสินค้า</button>
         </div>
       </form>
     </div>
@@ -589,10 +598,56 @@
     }
 
     function openAddProductModal() { document.getElementById('add-product-modal').classList.remove('hidden'); }
-    function closeAddProductModal() { document.getElementById('add-product-modal').classList.add('hidden'); }
+    function closeAddProductModal() {
+      document.getElementById('add-product-modal').classList.add('hidden');
+      const preview = document.getElementById('new-image-preview');
+      preview.src = '';
+      preview.classList.add('hidden');
+    }
+
+    function previewSelectedImage(e) {
+      const file = e.target.files[0];
+      const preview = document.getElementById('new-image-preview');
+      if (file) {
+        preview.src = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+      } else {
+        preview.src = '';
+        preview.classList.add('hidden');
+      }
+    }
 
     async function handleAddProduct(e) {
       e.preventDefault();
+      const saveBtn = document.getElementById('btn-save-product');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'กำลังบันทึก...';
+
+      let finalImageUrl = document.getElementById('new-image').value.trim() || null;
+      const fileInput = document.getElementById('new-image-file');
+
+      // ถ้ามีการเลือกรูปจากเครื่อง ให้อัปโหลดขึ้น Supabase Storage ก่อน
+      if (fileInput.files && fileInput.files.length > 0) {
+        saveBtn.textContent = 'กำลังอัปโหลดรูป...';
+        const file = fileInput.files[0];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+        const { error: uploadError } = await db.storage
+          .from('products')
+          .upload(fileName, file);
+
+        if (uploadError) {
+          alert('อัปโหลดรูปภาพไม่สำเร็จ: ' + uploadError.message);
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'บันทึกสินค้า';
+          return;
+        }
+
+        const { data: urlData } = db.storage.from('products').getPublicUrl(fileName);
+        finalImageUrl = urlData.publicUrl;
+      }
+
       const payload = {
         sku: document.getElementById('new-sku').value.trim(),
         category: document.getElementById('new-category').value.trim() || 'อื่น ๆ',
@@ -602,11 +657,14 @@
         price: parseFloat(document.getElementById('new-price').value),
         cost: parseFloat(document.getElementById('new-cost').value) || 0,
         stock: parseInt(document.getElementById('new-stock').value, 10) || 0,
-        image_url: document.getElementById('new-image').value.trim() || null,
+        image_url: finalImageUrl,
         description: document.getElementById('new-desc').value.trim() || null
       };
 
       const { error } = await db.from('products').insert([payload]);
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'บันทึกสินค้า';
+
       if (error) {
         alert('เพิ่มสินค้าไม่สำเร็จ: ' + error.message);
         return;
